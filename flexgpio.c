@@ -1,6 +1,6 @@
 /*
 
-flexgpio.c - driver code for FLEXGPIO I2C expander
+  flexgpio.c - driver code for FLEXGPIO I2C expander
 
   Part of grblHAL
 
@@ -185,12 +185,6 @@ static bool digital_in_cfg (xbar_t *input, gpio_in_config_t *config, bool persis
 
         if(xbar_is_probe_in(input->function)){
             mcu_irq_mask &= ~(1 << input->pin); // Clear MCU IRQ bit
-
-            if(config->debounce)
-                probe_irq_mask |= 1 << input->pin;
-            else
-                probe_irq_mask &= ~(1 << input->pin);
-
             task_add_immediate(flexgpio_config, NULL);
         }
         
@@ -282,7 +276,10 @@ static bool register_interrupt_handler (uint8_t port, uint8_t user_port, pin_irq
 
         xbar_t *input = &aux_in[port];
 
-        if((ok = (irq_mode & input->cap.irq_mode) == irq_mode && interrupt_callback != NULL)) {
+        if(ok = (irq_mode == IRQ_Mode_All) && xbar_is_probe_in(input->function)){
+            probe_irq_mask |= 1 << input->pin; // Set probe IRQ bit
+        }
+        else if((ok = (irq_mode & input->cap.irq_mode) == irq_mode && interrupt_callback != NULL)) {
             irq[input->id].callback = interrupt_callback;
             irq[input->id].mode = input->mode.irq_mode = irq_mode;
         }
@@ -290,8 +287,11 @@ static bool register_interrupt_handler (uint8_t port, uint8_t user_port, pin_irq
         if(irq_mode == IRQ_Mode_None || !ok) {
             irq[input->id].callback = NULL;
             irq[input->id].mode = input->mode.irq_mode = IRQ_Mode_None;
+            probe_irq_mask &= ~(1 << input->pin); // Clear probe IRQ bit
         }
     }
+
+    task_add_immediate(flexgpio_config, NULL); //OKAY TO CALL THIS ALWAYS?
 
     return ok;
 }
