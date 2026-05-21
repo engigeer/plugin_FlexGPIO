@@ -23,9 +23,6 @@
 
 */
 
-// TODO: 
-//- (1) ADD WRITING FOR CONFIGURATION (INVERT, DIRECTION, MASK, ETC.)
-
 #include "driver.h"
 
 #if FLEXGPIO_ENABLE == 1
@@ -117,7 +114,7 @@ static void flexgpio_config (void *data);
 static void digital_out_ll (xbar_t *output, float value)
 {
 
-    bool on = value !=0.0f;
+    bool on = value != 0.0f;
 
     if(aux_out[output->id].mode.inverted)
         on = !on;
@@ -146,7 +143,7 @@ static void digital_out_ll (xbar_t *output, float value)
 
 static bool digital_out_cfg (xbar_t *output, gpio_out_config_t *config, bool persistent)
 {
-    if(output->id < digital.out.n_ports) { //WHY THIS? NEED TO CHECK IF THIS IS BLOCKING INVERSION FOR MOST PINS
+    if(output->id < digital.out.n_ports) {
 
         if(config->inverted != aux_out[output->id].mode.inverted) {
             aux_out[output->id].mode.inverted = config->inverted;
@@ -357,23 +354,25 @@ static void i2c_get_inputs (void *data)
 
         xbar_t *input = &aux_in[idx];
     
-        if(input->port) {
+        if(input->port) { //ALWAYS TRUE? SHOULD THIS CHECK IF PORT IS VALID?
 
-            uint32_t bit = 1UL << flexgpio_in_map[idx];
-            bool event = false;
+            uint32_t event = 0, bit = 1UL << flexgpio_in_map[idx];
 
             switch(irq[input->id].mode) {
 
                 case IRQ_Mode_Rising:
-                    event = ((pins & bit)!= 0) && !((*(uint32_t *)input->port & bit)!= 0);
+                    if(((pins & bit)!= 0) && !((*(uint32_t *)input->port & bit)!= 0))
+                        event |= bit;
                     break;
 
                 case IRQ_Mode_Falling:
-                    event = !((pins & bit)!= 0) && ((*(uint32_t *)input->port & bit)!= 0);
+                    if(!((pins & bit)!= 0) && ((*(uint32_t *)input->port & bit)!= 0))
+                        event |= bit;
                     break;
 
                 case IRQ_Mode_Change:
-                    event = ((pins & bit)!= 0) != ((*(uint32_t *)input->port & bit)!= 0);
+                    if(((pins & bit)!= 0) != ((*(uint32_t *)input->port & bit)!= 0))
+                        event |= bit;
                     break;
 
                 default: break;
@@ -384,12 +383,10 @@ static void i2c_get_inputs (void *data)
             else
                 *(uint32_t *)input->port &= ~bit;
 
-            if(event) {
-                if(irq[input->id].callback)
-                    irq[input->id].callback(digital.in.n_start + input->id, ((pins & bit) != 0));
+            if((event & bit) && irq[input->id].callback)
+                    irq[input->id].callback(digital.in.n_start + input->id, !!(*(uint32_t *)input->port & bit));
 
-                event_bits |= bit;
-            }
+            event_bits |= event; // Should this be reset somewhere? Is it okay for pending events to persist indefinitely.
         }
     }
 }
@@ -439,8 +436,6 @@ static void driverReset (void)
 {
     // todo: deterministic pin states (what happens if there was disconnect?)
     driver_reset();
-
-    //task_add_immediate(flexgpio_config, NULL);
 }
 
 static void onEnumeratePins (bool low_level, pin_info_ptr pin_info, void *data)
@@ -478,25 +473,6 @@ static void onReportOptions (bool newopt)
 
     if(!newopt)
         report_plugin("FLEXGPIO", "0.03");
-}
-
-static void complete_setup (void *data)
-{
-    uint_fast8_t idx = 0;
-
-    on_enumerate_pins = hal.enumerate_pins;
-    hal.enumerate_pins = onEnumeratePins;
-
-    on_report_options = grbl.on_report_options;
-    grbl.on_report_options = onReportOptions;
-
-    driver_reset = hal.driver_reset;
-    hal.driver_reset = driverReset;
-
-    for(idx = 0; idx < digital.in.n_ports; idx++)
-        mcu_irq_mask |= 1 << flexgpio_in_map[idx];
-
-    task_add_immediate(flexgpio_config, NULL);
 }
 
 void flexgpio_init (void)
@@ -552,6 +528,8 @@ void flexgpio_init (void)
             aux_in[idx].cap.claimable = On;
             aux_in[idx].cap.invert = On;
             aux_in[idx].mode.input = On;
+
+            mcu_irq_mask |= 1 << aux_in[idx].pin;
         }
 
         digital.out.n_ports = FLEXGPIO_N_DOUT;

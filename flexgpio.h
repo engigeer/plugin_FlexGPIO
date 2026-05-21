@@ -26,24 +26,6 @@
 #ifndef _FLEXGPIO_H_
 #define _FLEXGPIO_H_
 
-#include "driver.h"
+void flexgpio_init (void);
 
-#if FLEXGPIO_ENABLE
-
-/*typedef struct {
-    uint32_t out_mask;   // Bitmask for Write states
-    uint32_t in_mask;    // Bitmask for Read states
-    uint32_t rw_mask;    // Bitmask for Read/Write configuration (0 = input, 1 = output)
-    uint32_t inv_mask;   // Bitmask for inversion configuration
-
-    // Individual bit access using union and struct
-    union {
-        uint32_t value;
-        struct {
-            uint32_t bit[32]; // 32 bits, mapped to each GPIO pin
-        };
-    } out, in, rw, inv;
-} flexgpio_t;*/
-
-#endif
 #endif
